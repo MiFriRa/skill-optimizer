@@ -1,0 +1,30 @@
+# Build artifacts
+dist/
+build/
+*.egg-info/
+src/*.egg-info/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Test data (generated during test runs)
+test/data/
+test/skills/dashboard/SKILL.md
+
+# Environment / secrets
+.env
+.env.*
+*.key
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Optimizer data (generated at runtime)
+.optimizer/
