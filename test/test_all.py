@@ -2,11 +2,12 @@
 Test script for skill-optimizer.
 
 Usage:
-    Set your API key, then run:
+    Set your GEMINI_API_KEY in .env, then run:
         python test/test_all.py
 
-    Or pass it as an argument:
-        python test/test_all.py sk-ant-api03-...
+    Or pass provider and key as arguments:
+        python test/test_all.py gemini AIza...
+        python test/test_all.py anthropic sk-ant-api03-...
 """
 
 import sys
@@ -20,6 +21,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from skill_optimizer import SkillOptimizer, Session, Suggestion
+from skill_optimizer.llm_client import LLMClient, create_client
 
 # ── Logging – shows the logs we added (truncation, API errors, parse warnings) ──
 logging.basicConfig(
@@ -48,6 +50,16 @@ Creates interactive dashboards for data visualization.
 - Include axis labels on all charts
 - Default to responsive layouts
 """
+
+
+class MockLLMClient(LLMClient):
+    """Fake LLM client for offline tests."""
+
+    async def generate(self, prompt: str) -> str:
+        raise RuntimeError("MockLLMClient: should not be called in offline tests")
+
+    def generate_sync(self, prompt: str) -> str:
+        raise RuntimeError("MockLLMClient: should not be called in offline tests")
 
 
 # ─────────────────────────────────────────────
@@ -83,7 +95,10 @@ def test_init_and_skill_scan():
         skills_dir=str(SKILLS_DIR),
         api_key="fake-key",
         data_dir=str(DATA_DIR),
+        provider="gemini",
     )
+    # Override with mock client so no real API key is needed
+    optimizer.client = MockLLMClient()
 
     print(f"Skills found: {optimizer.skill_names}")
     assert "dashboard" in optimizer.skill_names, "dashboard skill not found"
@@ -97,7 +112,9 @@ def test_session_user_org():
         skills_dir=str(SKILLS_DIR),
         api_key="fake-key",
         data_dir=str(DATA_DIR),
+        provider="gemini",
     )
+    optimizer.client = MockLLMClient()
 
     session = optimizer.start_session(user_id="user_42", org="acme-corp")
 
@@ -210,7 +227,9 @@ def test_truncation():
         skills_dir=str(SKILLS_DIR),
         api_key="fake-key",
         data_dir=str(DATA_DIR),
+        provider="gemini",
     )
+    optimizer.client = MockLLMClient()
 
     session = optimizer.start_session(user_id="user_1", org="test-org")
 
@@ -248,7 +267,9 @@ def test_metrics_tracking():
         skills_dir=str(SKILLS_DIR),
         api_key="fake-key",
         data_dir=str(DATA_DIR),
+        provider="gemini",
     )
+    optimizer.client = MockLLMClient()
 
     session = optimizer.start_session(user_id="user_1", org="test-org")
     session.track_skill("dashboard", exec_time_ms=1500, success=True)
@@ -271,9 +292,11 @@ def test_api_failure_logging():
 
     optimizer = SkillOptimizer(
         skills_dir=str(SKILLS_DIR),
-        api_key="fake-key-should-fail",
+        api_key="fake-key",
         data_dir=str(DATA_DIR),
+        provider="gemini",
     )
+    optimizer.client = MockLLMClient()
 
     session = optimizer.start_session(user_id="user_1", org="test-org")
     session.add_message("user", "Create a dashboard")
@@ -290,13 +313,14 @@ def test_api_failure_logging():
 # ─────────────────────────────────────────────
 # 8. Live API test (requires real key)
 # ─────────────────────────────────────────────
-def test_live_session(api_key: str):
+def test_live_session(provider: str, api_key: str):
     separator("8. Live API test (real key)")
 
     optimizer = SkillOptimizer(
         skills_dir=str(SKILLS_DIR),
         api_key=api_key,
         data_dir=str(DATA_DIR),
+        provider=provider,
     )
 
     session = optimizer.start_session(user_id="test_user", org="test_org")
@@ -383,12 +407,22 @@ def test_live_session(api_key: str):
 # Main
 # ─────────────────────────────────────────────
 def main():
-    # Get API key from arg or env
+    # Get provider and API key from args or env
+    provider = "gemini"
     api_key = None
-    if len(sys.argv) > 1:
+
+    if len(sys.argv) > 2:
+        provider = sys.argv[1]
+        api_key = sys.argv[2]
+    elif len(sys.argv) > 1:
         api_key = sys.argv[1]
     else:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        # Try env vars
+        from dotenv import load_dotenv
+        load_dotenv()
+        api_key = os.environ.get("GEMINI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+        if os.environ.get("ANTHROPIC_API_KEY") and not os.environ.get("GEMINI_API_KEY"):
+            provider = "anthropic"
 
     clean_data()
 
@@ -407,12 +441,13 @@ def main():
     # Live test (only if key provided)
     if api_key:
         clean_data()
-        test_live_session(api_key)
+        test_live_session(provider, api_key)
     else:
         separator("SKIPPED: Live API test")
         print("No API key provided. To run the live test:")
-        print("  python test/test_all.py sk-ant-api03-...")
-        print("  or set ANTHROPIC_API_KEY env variable\n")
+        print("  python test/test_all.py gemini AIza...")
+        print("  python test/test_all.py anthropic sk-ant-api03-...")
+        print("  or set GEMINI_API_KEY in .env\n")
 
     separator("ALL TESTS DONE")
 

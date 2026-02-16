@@ -2,6 +2,11 @@
 
 AI-powered skill optimization using Claude to analyze conversations and automatically improve SKILL.md files.
 
+## Antigravity Migration
+
+We have migrated to **Antigravity**, a powerful agentic AI coding assistant and runtime. This shift enables deeper integration with Antigravity's toolset and allows for more advanced autonomous capabilities. The core logic now leverages Antigravity's environment for better performance, enhanced security (like our new `GEMINI_API_KEY` handling), and seamless workflow management.
+
+
 ## Installation
 
 ```bash

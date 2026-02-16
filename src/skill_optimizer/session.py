@@ -2,7 +2,7 @@
 Session tracking.
 
 Tracks an entire conversation session from start to end.
-At session end, uses Claude AI to analyze the conversation and extract suggestions.
+At session end, uses an LLM to analyze the conversation and extract suggestions.
 """
 
 import logging
@@ -12,8 +12,7 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 
-from anthropic import Anthropic
-
+from .llm_client import LLMClient
 from .suggestions import SuggestionStore, Suggestion, SkillMetrics
 
 logger = logging.getLogger(__name__)
@@ -63,15 +62,13 @@ class Session:
         self,
         session_id: str,
         store: SuggestionStore,
-        api_key: str,
-        model: str = "claude-sonnet-4-20250514",
+        client: LLMClient,
         user_id: Optional[str] = None,
         org: Optional[str] = None,
     ):
         self.session_id = session_id
         self.store = store
-        self.api_key = api_key
-        self.model = model
+        self.client = client
         self.user_id = user_id
         self.org = org
         
@@ -150,44 +147,32 @@ class Session:
         return suggestions
     
     async def _analyze_conversation(self) -> List[Suggestion]:
-        """Use Claude to analyze the conversation."""
-        from anthropic import AsyncAnthropic
-
-        client = AsyncAnthropic(api_key=self.api_key)
+        """Use LLM to analyze the conversation."""
         prompt = self._build_analysis_prompt()
 
         try:
-            response = await client.messages.create(
-                model=self.model,
-                max_tokens=2000,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            response_text = await self.client.generate(prompt)
         except Exception as e:
             logger.error(
-                "Session %s: Claude API call failed: %s", self.session_id, e,
+                "Session %s: LLM API call failed: %s", self.session_id, e,
             )
             return []
 
-        return self._parse_analysis_response(response.content[0].text)
+        return self._parse_analysis_response(response_text)
 
     def _analyze_conversation_sync(self) -> List[Suggestion]:
         """Synchronous version of _analyze_conversation."""
-        client = Anthropic(api_key=self.api_key)
         prompt = self._build_analysis_prompt()
 
         try:
-            response = client.messages.create(
-                model=self.model,
-                max_tokens=2000,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            response_text = self.client.generate_sync(prompt)
         except Exception as e:
             logger.error(
-                "Session %s: Claude API call failed: %s", self.session_id, e,
+                "Session %s: LLM API call failed: %s", self.session_id, e,
             )
             return []
 
-        return self._parse_analysis_response(response.content[0].text)
+        return self._parse_analysis_response(response_text)
     
     def _build_analysis_prompt(self) -> str:
         """Build the prompt for Claude to analyze the conversation."""

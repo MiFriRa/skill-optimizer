@@ -10,13 +10,20 @@ Simple flow:
 """
 
 import re
+import os
 import uuid
 import yaml
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime
 
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None  # python-dotenv is optional at import time
+
 from .session import Session
+from .llm_client import LLMClient, create_client
 from .suggestions import SuggestionStore, Suggestion, SkillMetrics
 
 
@@ -27,8 +34,8 @@ class SkillOptimizer:
     Usage:
         # Initialize
         optimizer = SkillOptimizer(
-            skills_dir=".claude/skills",
-            api_key="sk-ant-..."
+            skills_dir=".gemini/antigravity/skills",
+            api_key="..."
         )
         
         # Track a session
@@ -50,22 +57,34 @@ class SkillOptimizer:
     def __init__(
         self,
         skills_dir: str | Path,
-        api_key: str,
+        api_key: Optional[str] = None,
         data_dir: Optional[str | Path] = None,
-        model: str = "claude-sonnet-4-20250514",
+        model: Optional[str] = None,
+        provider: str = "gemini",
     ):
         """
         Initialize the optimizer.
         
         Args:
-            skills_dir: Path to skills directory (e.g., ".claude/skills")
-            api_key: Anthropic API key
+            skills_dir: Path to skills directory (e.g., ".gemini/antigravity/skills")
+            api_key: API key for the LLM provider (falls back to .env / env vars)
             data_dir: Path for data storage (default: skills_dir/.optimizer)
-            model: Claude model to use for analysis
+            model: Model to use for analysis (uses provider default if None)
+            provider: LLM provider name — "gemini" or "anthropic"
         """
+        # Load .env if python-dotenv is available
+        if load_dotenv is not None:
+            load_dotenv()
+
         self.skills_dir = Path(skills_dir)
-        self.api_key = api_key
-        self.model = model
+        self.provider = provider
+        
+        # Create LLM client
+        self.client: LLMClient = create_client(
+            provider=provider,
+            api_key=api_key,
+            model=model,
+        )
         
         # Data directory
         self.data_dir = Path(data_dir) if data_dir else self.skills_dir / ".optimizer"
@@ -81,6 +100,20 @@ class SkillOptimizer:
         self._skill_paths: Dict[str, Path] = {}
         self._scan_skills()
     
+    @staticmethod
+    def _read_skill(path: Path) -> str:
+        """Read a skill file with OS-agnostic line endings.
+        
+        Normalizes \\r\\n → \\n so all regex and text processing
+        works identically on Windows, macOS, and Linux.
+        """
+        return path.read_text(encoding="utf-8").replace("\r\n", "\n")
+
+    @staticmethod
+    def _write_skill(path: Path, content: str) -> None:
+        """Write a skill file with explicit UTF-8 encoding."""
+        path.write_text(content, encoding="utf-8")
+
     def _scan_skills(self):
         """Scan for SKILL.md files."""
         self._skill_paths.clear()
@@ -96,7 +129,7 @@ class SkillOptimizer:
     def _get_skill_name(self, skill_file: Path) -> Optional[str]:
         """Extract skill name from SKILL.md."""
         try:
-            content = skill_file.read_text()
+            content = self._read_skill(skill_file)
             match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
             if match:
                 frontmatter = yaml.safe_load(match.group(1))
@@ -132,8 +165,7 @@ class SkillOptimizer:
         session = Session(
             session_id=session_id,
             store=self.store,
-            api_key=self.api_key,
-            model=self.model,
+            client=self.client,
             user_id=user_id,
             org=org,
         )
@@ -251,17 +283,17 @@ class SkillOptimizer:
                 skill_path.parent.mkdir(parents=True, exist_ok=True)
             content = self._create_new_skill(skill_name, suggestions)
             if not dry_run:
-                skill_path.write_text(content)
+                self._write_skill(skill_path, content)
                 self._skill_paths[skill_name] = skill_path
             return {"action": "created", "suggestions_applied": len(suggestions)}
         
         # Update existing skill
-        content = skill_path.read_text()
+        content = self._read_skill(skill_path)
         new_content, changes = self._update_skill_content(content, skill_name, suggestions)
         
         if new_content != content:
             if not dry_run:
-                skill_path.write_text(new_content)
+                self._write_skill(skill_path, new_content)
             return changes
         
         return None
@@ -371,8 +403,14 @@ This skill was auto-generated based on usage patterns.
         
         return content, changes
     
+    # Maximum length for the description field in SKILL.md frontmatter.
+    MAX_DESCRIPTION_LENGTH = 200
+
     def _add_triggers_to_description(self, content: str, triggers: List[Suggestion]) -> str:
-        """Add trigger phrases to the description, merging with any existing triggers."""
+        """Add trigger phrases to the description, merging with any existing triggers.
+        
+        Enforces MAX_DESCRIPTION_LENGTH to prevent Antigravity routing issues.
+        """
         match = re.match(r"^(---\n)(.*?)(\n---)", content, re.DOTALL)
         if not match:
             return content
@@ -393,7 +431,13 @@ This skill was auto-generated based on usage patterns.
             new_triggers = [s.content for s in triggers]
             all_triggers = list(dict.fromkeys(existing_triggers + new_triggers))
 
-            frontmatter["description"] = base_desc + " Triggers: " + ", ".join(all_triggers)
+            # Build description, trimming triggers if it exceeds max length
+            candidate = base_desc + " Triggers: " + ", ".join(all_triggers)
+            while len(candidate) > self.MAX_DESCRIPTION_LENGTH and all_triggers:
+                all_triggers.pop()
+                candidate = base_desc + " Triggers: " + ", ".join(all_triggers)
+
+            frontmatter["description"] = candidate
             new_frontmatter = yaml.dump(frontmatter, default_flow_style=False)
             content = match.group(1) + new_frontmatter.strip() + match.group(3) + content[match.end():]
         except Exception:

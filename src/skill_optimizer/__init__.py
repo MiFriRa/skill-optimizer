@@ -41,10 +41,15 @@ __version__ = "0.3.0"
 from .optimizer import SkillOptimizer
 from .session import Session
 from .suggestions import SuggestionStore, Suggestion
+from .llm_client import LLMClient, GeminiClient, AnthropicClient, create_client
 
 __all__ = [
     "SkillOptimizer",
     "Session",
     "SuggestionStore",
     "Suggestion",
+    "LLMClient",
+    "GeminiClient",
+    "AnthropicClient",
+    "create_client",
 ]
