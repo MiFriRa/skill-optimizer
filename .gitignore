@@ -8,6 +8,7 @@ src/*.egg-info/
 __pycache__/
 *.pyc
 *.pyo
+.venv/
 
 # Test data (generated during test runs)
 test/data/

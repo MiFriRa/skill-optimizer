@@ -303,6 +303,10 @@ response = await client.generate("Async analysis...")
 - **200-char description limit** — trigger phrases are capped to prevent Antigravity routing issues
 - **Deduplication** — identical suggestions are never added twice
 
+## Credits
+
+This project is a fork of [skill-optimizer](https://github.com/meet-rocking/skill-optimizer) by [Meet Patel](https://github.com/meet-rocking), originally built for Claude/Anthropic. This fork adapts it for [Antigravity](https://antigravity.dev) with Gemini as the default LLM provider, a CLI-first workflow, and artifact mining from Antigravity brain conversations.
+
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE) (original copyright Meet Patel)

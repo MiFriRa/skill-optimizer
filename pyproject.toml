@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "skill-optimizer"
-version = "0.3.0"
-description = "Auto-track and optimize Claude skills using AI-powered conversation analysis"
+version = "0.4.0"
+description = "Auto-optimize Antigravity SKILL.md files using AI-powered conversation analysis"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Meet Patel", email = "meet84046@gmail.com"}
+    {name = "Meet Patel", email = "meet84046@gmail.com"},
+    {name = "Mikkel Frimer-Rasmussen"},
 ]
-keywords = ["claude", "anthropic", "skills", "optimization", "ai"]
+keywords = ["antigravity", "gemini", "skills", "optimization", "ai"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -40,7 +41,8 @@ dev = [
 ]
 
 [project.urls]
-Repository = "https://github.com/meet-rocking/skill-optimizer"
+Repository = "https://github.com/MiFriRa/skill-optimizer"
+Upstream = "https://github.com/meet-rocking/skill-optimizer"
 
 [tool.setuptools.packages.find]
 where = ["src"]
