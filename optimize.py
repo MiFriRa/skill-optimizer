@@ -39,6 +39,7 @@ load_dotenv()
 
 from skill_optimizer import SkillOptimizer, Suggestion
 from skill_optimizer.llm_client import create_client
+from skill_optimizer.verifier import SkillVerifier
 
 # ── Defaults ─────────────────────────────────────────────────────
 DEFAULT_SKILLS_DIR = os.environ.get(
@@ -412,8 +413,58 @@ If no suggestions, return: {{"suggestions": []}}"""
                 print(f"     (no valid JSON in response)")
         except Exception as e:
             print(f"     ⚠️  LLM error: {e}")
-
     print(f"\n  Run 'python optimize.py status' to see all suggestions.\n")
+
+
+def cmd_verify(args):
+    """Verify skills against quality and security rules."""
+    opt = get_optimizer(args)
+    verifier = SkillVerifier()
+    
+    skill_filter = getattr(args, "skill", None)
+    
+    if skill_filter:
+        if skill_filter not in opt.skill_names:
+            print(f"⚠️  Skill '{skill_filter}' not found.")
+            return
+        skills_to_check = [skill_filter]
+    else:
+        skills_to_check = sorted(opt.skill_names)
+
+    print(f"\n{'='*60}")
+    print(f"  Skill Verification: {len(skills_to_check)} skills")
+    print(f"{'='*60}\n")
+    
+    issues_found = 0
+    clean_skills = 0
+    
+    for skill_name in skills_to_check:
+        skill_path = opt._skill_paths.get(skill_name)
+        if not skill_path:
+            continue
+            
+        result = verifier.verify_file(skill_path)
+        
+        if result.valid and not result.issues:
+            clean_skills += 1
+            if args.verbose:
+                 print(f"  ✅ {skill_name}")
+        else:
+            status_icon = "❌" if not result.valid else "⚠️ "
+            print(f"  {status_icon} {skill_name}")
+            for issue in result.issues:
+                # Color code based on severity (simple ANSI)
+                color = "\033[91m" if issue.severity == "error" else "\033[93m"
+                reset = "\033[0m"
+                loc = f" (line {issue.line})" if issue.line else ""
+                print(f"     {color}[{issue.code}]{reset} {issue.message}{loc}")
+            issues_found += len(result.issues)
+            print()
+
+    print(f"{'='*60}")
+    print(f"Summary: {clean_skills} clean, {len(skills_to_check) - clean_skills} with issues.")
+    if issues_found > 0:
+        sys.exit(1)
 
 
 # ── Argument Parser ──────────────────────────────────────────────
@@ -469,10 +520,14 @@ def build_parser():
     p_analyze.add_argument("--skill", required=True, help="Skill to analyze for")
     p_analyze.add_argument("--file", help="Conversation file (or stdin)")
 
-    # mine
     p_mine = sub.add_parser("mine", help="Mine artifacts from brain conversations")
     p_mine.add_argument("--conversation", help="Conversation ID to analyze")
     p_mine.add_argument("--recent", type=int, help="Analyze last N days")
+
+    # verify
+    p_verify = sub.add_parser("verify", help="Verify skills against rules")
+    p_verify.add_argument("--skill", help="Verify specific skill")
+    p_verify.add_argument("--verbose", action="store_true", help="Show passed skills too")
 
     return parser
 
@@ -492,6 +547,7 @@ def main():
         "demo": cmd_demo,
         "analyze": cmd_analyze,
         "mine": cmd_mine,
+        "verify": cmd_verify,
     }
 
     commands[args.command](args)
